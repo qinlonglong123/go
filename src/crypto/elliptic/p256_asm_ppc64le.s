@@ -194,6 +194,8 @@ GLOBL byteswap<>+0(SB), RODATA, $16
 #define SEL1  V5
 #define SEL1_ VS37
 #define CAR1  V6
+#define SEL    V8
+#define ZER    V9
 //
 // iff cond == 1 val <- -val
 //
@@ -204,9 +206,14 @@ TEXT ·p256NegCond(SB), NOSPLIT, $0-16
 	MOVD $48, R18
 	MOVD $40, R19
 
-	MOVD cond+8(FP), R6
-	CMP  $0, R6
-	BC   12, 2, LR      // just return if cond == 0
+	// Copy cond into SEL (cond is R1 + 8 (cond offset) + 32)
+	MOVD $40, R17
+	LXVDSX (R1)(R17), SEL
+	// Zeroize ZER
+	VSPLTISB $0, ZER
+	// SEL controls whether to return the original value (Y1H/Y1L)
+	// or the negated value (T1H/T1L).
+	VCMPEQUD SEL, ZER, SEL
 
 	MOVD $p256mul<>+0x00(SB), CPOOL
 
@@ -225,6 +232,9 @@ TEXT ·p256NegCond(SB), NOSPLIT, $0-16
 	VSUBCUQ  PL, Y1L, CAR1      // subtract part2 giving carry
 	VSUBUQM  PL, Y1L, T1L       // subtract part2 giving result
 	VSUBEUQM PH, Y1H, CAR1, T1H // subtract part1 using carry from part2
+
+ 	VSEL T1H, Y1H, SEL, T1H
+	VSEL T1L, Y1L, SEL, T1L
 
 	VPERM T1H, T1H, SWAP, T1H
 	VPERM T1L, T1L, SWAP, T1L
@@ -250,6 +260,8 @@ TEXT ·p256NegCond(SB), NOSPLIT, $0-16
 #undef SEL1
 #undef SEL1_
 #undef CAR1
+#undef SEL
+#undef ZER
 
 //
 // if cond == 0 res <-b else res <-a
